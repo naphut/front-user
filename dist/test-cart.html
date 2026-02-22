@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cart Test</title>
+</head>
+<body>
+    <h1>Cart Test Page</h1>
+    <div id="cart-status">Checking cart...</div>
+    
+    <script>
+        // Test localStorage
+        console.log('Testing localStorage...');
+        const testCart = [
+            {
+                id: '1',
+                name: 'Test Shirt',
+                price: 29.99,
+                image_url: 'https://via.placeholder.com/150',
+                quantity: 2,
+                category_name: 'Test Category'
+            }
+        ];
+        
+        localStorage.setItem('cart', JSON.stringify(testCart));
+        console.log('Test cart saved to localStorage');
+        
+        const savedCart = JSON.parse(localStorage.getItem('cart') || '[]');
+        document.getElementById('cart-status').innerHTML = `
+            <h2>Cart Items: ${savedCart.length}</h2>
+            <pre>${JSON.stringify(savedCart, null, 2)}</pre>
+        `;
+        
+        console.log('Cart test completed:', savedCart);
+    </script>
+</body>
+</html>
