@@ -1,0 +1,32 @@
+/* ផ្លាស់ទី @import មកនៅខាងដើម */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+@import './styles/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+  
+  body {
+    @apply antialiased text-black bg-white;
+  }
+}
+
+@layer components {
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-3 bg-black text-white rounded-xl font-bold hover:bg-black/80 transition-all;
+  }
+  
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3 bg-white text-black border border-black/10 rounded-xl font-bold hover:bg-black/5 transition-all;
+  }
+}
