@@ -3,6 +3,8 @@ import { Product, Category } from '../types';
 // ប្រើ environment variable ឬ default URL
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
+console.log('🔗 API_BASE_URL initialized as:', API_BASE_URL);
+
 export async function getCategories(): Promise<Category[]> {
   try {
     console.log('Fetching categories from:', `${API_BASE_URL}/categories/`);
@@ -33,20 +35,11 @@ export async function getProducts(params?: {
     if (params?.search) searchParams.append('search', params.search);
     if (params?.sort) searchParams.append('sort', params.sort);
     if (params?.featured) searchParams.append('featured', 'true');
-    
-    // Add cache-busting timestamp
-    searchParams.append('_t', Date.now().toString());
 
     const url = `${API_BASE_URL}/products/?${searchParams.toString()}`;
     console.log('Fetching products from:', url);
     
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      },
-    });
+    const response = await fetch(url);
     console.log('Response status:', response.status);
     
     if (!response.ok) {
