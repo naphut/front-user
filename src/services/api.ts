@@ -33,11 +33,20 @@ export async function getProducts(params?: {
     if (params?.search) searchParams.append('search', params.search);
     if (params?.sort) searchParams.append('sort', params.sort);
     if (params?.featured) searchParams.append('featured', 'true');
+    
+    // Add cache-busting timestamp
+    searchParams.append('_t', Date.now().toString());
 
     const url = `${API_BASE_URL}/products/?${searchParams.toString()}`;
     console.log('Fetching products from:', url);
     
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+    });
     console.log('Response status:', response.status);
     
     if (!response.ok) {
