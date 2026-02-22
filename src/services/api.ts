@@ -15,42 +15,52 @@ export async function getCategories(): Promise<Category[]> {
     return data;
   } catch (error) {
     console.error('Error fetching categories:', error);
-    return [];
+    throw error; // Re-throw to handle in components
   }
 }
 
-export async function getProducts(params: {
-  category?: string | null;
-  search?: string | null;
+export async function getProducts(params?: {
+  category?: string;
+  search?: string;
   sort?: string | null;
   featured?: boolean;
 }): Promise<Product[]> {
   try {
+    console.log('API_BASE_URL:', API_BASE_URL);
+    
     const searchParams = new URLSearchParams();
-    if (params.category) searchParams.append('category', params.category);
-    if (params.search) searchParams.append('search', params.search);
-    if (params.sort) searchParams.append('sort', params.sort);
-    if (params.featured) searchParams.append('featured', 'true');
+    if (params?.category) searchParams.append('category', params.category);
+    if (params?.search) searchParams.append('search', params.search);
+    if (params?.sort) searchParams.append('sort', params.sort);
+    if (params?.featured) searchParams.append('featured', 'true');
 
     const url = `${API_BASE_URL}/products/?${searchParams.toString()}`;
     console.log('Fetching products from:', url);
     
     const response = await fetch(url);
+    console.log('Response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
     const data = await response.json();
     console.log('Products received:', data);
     return data;
   } catch (error) {
     console.error('Error fetching products:', error);
-    return [];
+    throw error; // Re-throw to handle in components
   }
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
   try {
+    console.log('API_BASE_URL:', API_BASE_URL);
+    
     const response = await fetch(`${API_BASE_URL}/products/${id}`);
+    console.log('Response status:', response.status);
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
