@@ -3,76 +3,118 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 export interface PaymentQRRequest {
   order_id: string;
   amount: number;
-  currency: string;
+  currency?: string;
 }
 
 export interface PaymentQRResponse {
   success: boolean;
-  qr_data?: string;
+  qr_string?: string;
+  qr_image?: string;
   md5?: string;
-  deeplink?: string;
-  bill_number?: string;
-  order_id?: string;
+  amount?: number;
+  currency?: string;
   error?: string;
+  merchant_id?: string;
+  phone_number?: string;
+  is_mock?: boolean;
 }
 
 export interface PaymentStatusResponse {
-  success: boolean;
-  status?: 'PAID' | 'UNPAID';
-  payment_info?: any;
-  error?: string;
+  md5: string;
+  status: string;
+  success?: boolean;
+  transaction_id?: string;
+  is_mock?: boolean;
 }
 
-// Helper function for auth headers
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-};
-
 export const paymentApi = {
+  // បង្កើត QR Code សម្រាប់ការទូទាត់
   async createPaymentQR(data: PaymentQRRequest): Promise<PaymentQRResponse> {
-    const response = await fetch(`${API_BASE_URL}/payment/create-qr`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to create payment QR');
-    }
-
-    return response.json();
-  },
-
-  async checkPaymentStatus(order_id: string): Promise<PaymentStatusResponse> {
-    const response = await fetch(`${API_BASE_URL}/payment/check-status`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ order_id }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to check payment status');
-    }
-
-    return response.json();
-  },
-
-  async getQRImage(order_id: string): Promise<string> {
-    const response = await fetch(`${API_BASE_URL}/payment/qr-image/${order_id}`, {
-      headers: getAuthHeaders(),
-    });
+    const token = localStorage.getItem('token');
     
-    if (!response.ok) {
-      throw new Error('Failed to get QR image');
+    if (!token) {
+      throw new Error('Please login to continue');
     }
-    
-    const data = await response.json();
-    return data.url;
+
+    try {
+      console.log('📤 Sending payment request:', data);
+      
+      const response = await fetch(`${API_BASE_URL}/payment/create-qr`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          order_id: data.order_id,
+          amount: data.amount,
+          currency: data.currency || 'USD'
+        }),
+      });
+
+      const responseData = await response.json();
+      console.log('📥 Payment response:', responseData);
+
+      if (!response.ok) {
+        console.error('Payment QR creation failed:', responseData);
+        throw new Error(responseData.detail || 'Failed to create payment QR');
+      }
+
+      return responseData;
+    } catch (error) {
+      console.error('Error in createPaymentQR:', error);
+      throw error;
+    }
   },
+
+  // ពិនិត្យស្ថានភាពការទូទាត់
+  async checkPaymentStatus(md5: string): Promise<PaymentStatusResponse> {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('Please login to continue');
+    }
+
+    try {
+      console.log('🔍 Checking payment status for MD5:', md5);
+      
+      const response = await fetch(`${API_BASE_URL}/payment/check-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ md5 }),
+      });
+
+      const responseData = await response.json();
+      console.log('📥 Payment status response:', responseData);
+
+      if (!response.ok) {
+        console.error('Payment status check failed:', responseData);
+        throw new Error(responseData.detail || 'Failed to check payment status');
+      }
+
+      return responseData;
+    } catch (error) {
+      console.error('Error in checkPaymentStatus:', error);
+      throw error;
+    }
+  },
+
+  // បង្កើត QR Code Image URL ពី QR string
+  generateQRImageUrl(qrString: string): string {
+    return `https://chart.googleapis.com/chart?chs=256x256&cht=qr&chl=${encodeURIComponent(qrString)}`;
+  },
+
+  // ពិនិត្យស្ថានភាព service
+  async getServiceStatus() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/payment/status`);
+      return response.json();
+    } catch (error) {
+      console.error('Error checking payment service status:', error);
+      return { configured: false, service: 'unavailable' };
+    }
+  }
 };

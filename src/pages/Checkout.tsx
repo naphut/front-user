@@ -14,11 +14,12 @@ import {
   MapPin,
   User,
   Mail,
-  Phone
+  Phone,
+  Copy
 } from 'lucide-react';
 import { orderApi } from '../services/orderApi';
 import { useAuth } from '../context/AuthContext';
-import { paymentApi } from '../services/paymentApi';
+import { paymentApi, PaymentQRResponse } from '../services/paymentApi';
 import toast from 'react-hot-toast';
 
 const Checkout = () => {
@@ -29,8 +30,8 @@ const Checkout = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'khqr'>('card');
-  const [qrData, setQrData] = useState<any>(null);
-  const [paymentStatus, setPaymentStatus] = useState<string>('');
+  const [qrData, setQrData] = useState<PaymentQRResponse | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string>('PENDING');
   const [checkInterval, setCheckInterval] = useState<NodeJS.Timeout | null>(null);
   const [qrImageUrl, setQrImageUrl] = useState<string>('');
 
@@ -57,6 +58,15 @@ const Checkout = () => {
     }
   }, [user]);
 
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
+    };
+  }, [checkInterval]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -66,6 +76,28 @@ const Checkout = () => {
     return `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   };
 
+  const createOrderAfterPayment = async () => {
+    try {
+      const orderItems = cart.map(item => ({
+        product_id: Number(item.id),
+        product_name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      }));
+
+      const orderData = {
+        payment_method: 'khqr',
+        notes: `Phone: ${formData.phone}, Address: ${formData.address}, ${formData.city}`,
+        items: orderItems
+      };
+
+      await orderApi.createOrder(orderData);
+      console.log('Order created successfully after payment');
+    } catch (error) {
+      console.error('Failed to create order after payment:', error);
+    }
+  };
+
   const handleKHQRPayment = async () => {
     if (!user) {
       toast.error('Please login to continue');
@@ -73,7 +105,6 @@ const Checkout = () => {
       return;
     }
 
-    // ពិនិត្យមើលព័ត៌មានចាំបាច់
     if (!formData.phone) {
       toast.error('Phone number is required');
       return;
@@ -91,77 +122,57 @@ const Checkout = () => {
     try {
       const orderId = generateOrderId();
       
-      // បង្កើត QR Code
       const response = await paymentApi.createPaymentQR({
         order_id: orderId,
         amount: totalPrice,
         currency: 'USD'
       });
 
+      console.log('Payment QR response:', response);
+
       if (response.success) {
         setQrData(response);
         
-        // ទាញយករូបភាព QR
-        try {
-          const imageUrl = await paymentApi.getQRImage(orderId);
-          setQrImageUrl(imageUrl);
-        } catch (error) {
-          console.error('Failed to get QR image:', error);
+        // Generate QR image URL
+        if (response.qr_string) {
+          setQrImageUrl(paymentApi.generateQRImageUrl(response.qr_string));
+        } else if (response.md5) {
+          setQrImageUrl(paymentApi.generateQRFromMD5(response.md5));
         }
         
         toast.success('QR Code generated successfully');
         
-        // ចាប់ផ្តើមពិនិត្យស្ថានភាពការទូទាត់រៀងរាល់ 5 វិនាទី
-        const interval = setInterval(async () => {
-          try {
-            const status = await paymentApi.checkPaymentStatus(orderId);
-            if (status.success && status.status === 'PAID') {
-              clearInterval(interval);
-              setPaymentStatus('PAID');
+        if (response.md5) {
+          const interval = setInterval(async () => {
+            try {
+              const status = await paymentApi.checkPaymentStatus(response.md5!);
+              console.log('Payment status check:', status);
               
-              // បង្កើត order បន្ទាប់ពីការទូទាត់ជោគជ័យ
-              await createOrderAfterPayment();
-              
-              setIsSuccess(true);
-              clearCart();
-              toast.success('Payment successful!');
+              if (status.status === 'PAID') {
+                clearInterval(interval);
+                setPaymentStatus('PAID');
+                
+                await createOrderAfterPayment();
+                
+                setIsSuccess(true);
+                clearCart();
+                toast.success('Payment successful!');
+              }
+            } catch (error) {
+              console.error('Error checking payment status:', error);
             }
-          } catch (error) {
-            console.error('Error checking payment status:', error);
-          }
-        }, 5000);
-        
-        setCheckInterval(interval);
+          }, 5000);
+          
+          setCheckInterval(interval);
+        }
+      } else {
+        toast.error(response.error || 'Failed to create payment QR');
       }
     } catch (error: any) {
       console.error('Failed to create QR:', error);
       toast.error(error.message || 'Failed to create payment QR');
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  const createOrderAfterPayment = async () => {
-    try {
-      // បង្កើត order items ពី cart
-      const orderItems = cart.map(item => ({
-        product_id: item.id,
-        product_name: item.name,
-        quantity: item.quantity,
-        price: item.price
-      }));
-
-      // បង្កើត shipping address
-      const orderData = {
-        payment_method: 'khqr',
-        notes: `Phone: ${formData.phone}, Address: ${formData.address}, ${formData.city}`,
-        items: orderItems
-      };
-
-      await orderApi.createOrder(orderData);
-    } catch (error) {
-      console.error('Failed to create order after payment:', error);
-      // មិនបង្ហាញ error ដល់អ្នកប្រើទេ ព្រោះការទូទាត់បានជោគជ័យហើយ
     }
   };
 
@@ -172,7 +183,6 @@ const Checkout = () => {
       return;
     }
 
-    // ពិនិត្យមើលព័ត៌មានចាំបាច់
     if (!formData.firstName || !formData.lastName) {
       toast.error('Full name is required');
       return;
@@ -197,15 +207,13 @@ const Checkout = () => {
     setIsProcessing(true);
 
     try {
-      // បង្កើត order items ពី cart
       const orderItems = cart.map(item => ({
-        product_id: item.id,
+        product_id: Number(item.id),
         product_name: item.name,
         quantity: item.quantity,
         price: item.price
       }));
 
-      // បង្កើត order
       const orderData = {
         payment_method: 'credit_card',
         notes: `Name: ${formData.firstName} ${formData.lastName}, Phone: ${formData.phone}, Address: ${formData.address}, ${formData.city}`,
@@ -235,16 +243,6 @@ const Checkout = () => {
     }
   };
 
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (checkInterval) {
-        clearInterval(checkInterval);
-      }
-    };
-  }, [checkInterval]);
-
-  // បង្ហាញទំព័រជោគជ័យ
   if (isSuccess) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -282,7 +280,6 @@ const Checkout = () => {
     );
   }
 
-  // បង្ហាញពេល cart ទទេ
   if (cart.length === 0) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -303,7 +300,6 @@ const Checkout = () => {
   return (
     <div className="min-h-screen bg-white py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back Button */}
         <Link 
           to="/cart" 
           className="inline-flex items-center text-sm font-bold text-gray-500 hover:text-black mb-8 transition group"
@@ -546,50 +542,81 @@ const Checkout = () => {
                 </div>
               )}
 
-              {/* KHQR Display */}
-              {paymentMethod === 'khqr' && qrData && (
-                <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
-                  <h3 className="text-xl font-bold text-black mb-6">Scan with Bakong App</h3>
-                  
-                  <div className="bg-white p-4 rounded-xl inline-block mb-6 shadow-lg">
-                    {qrImageUrl ? (
-                      <img 
-                        src={qrImageUrl}
-                        alt="KHQR Code"
-                        className="w-64 h-64 mx-auto"
-                        onError={(e) => {
-                          console.error('Failed to load QR image');
-                          e.currentTarget.src = 'https://via.placeholder.com/256?text=QR+Code';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-64 h-64 bg-gray-100 rounded-xl flex items-center justify-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-                  
-                  <p className="text-2xl font-bold text-black mb-4">
-                    ${totalPrice.toFixed(2)}
-                  </p>
-                  
-                  <p className="text-sm text-gray-600 mb-4 flex items-center justify-center">
-                    <Smartphone className="w-4 h-4 mr-2" />
-                    Open Bakong App and scan the QR code
-                  </p>
-                  
-                  {paymentStatus === 'PAID' ? (
-                    <div className="bg-green-50 text-green-600 py-3 px-4 rounded-xl font-bold">
-                      Payment Successful!
-                    </div>
-                  ) : (
-                    <div className="bg-blue-50 text-blue-600 py-3 px-4 rounded-xl font-bold flex items-center justify-center">
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Waiting for payment...
-                    </div>
-                  )}
-                </div>
-              )}
+              
+{/* KHQR Display */}
+{paymentMethod === 'khqr' && qrData && (
+  <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+    <h3 className="text-xl font-bold text-black mb-6">Scan with Bakong App</h3>
+    
+    <div className="bg-white p-4 rounded-xl inline-block mb-6 shadow-lg">
+      {qrImageUrl ? (
+        <img 
+          src={qrImageUrl}
+          alt="KHQR Code"
+          className="w-64 h-64 mx-auto"
+          onError={(e) => {
+            console.error('Failed to load QR image');
+            // Fallback to QR Server
+            e.currentTarget.src = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData.md5 || 'LUMINA')}`;
+          }}
+        />
+      ) : (
+        <div className="w-64 h-64 bg-gray-100 rounded-xl flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
+      )}
+    </div>
+    
+    <p className="text-2xl font-bold text-black mb-4">
+      ${totalPrice.toFixed(2)}
+    </p>
+    
+    {/* Merchant Information */}
+    <div className="mb-4 p-3 bg-gray-50 rounded-xl text-left">
+      <p className="text-xs text-gray-500 mb-1">Merchant:</p>
+      <p className="text-sm font-bold text-black">{qrData.merchant_id || 'ret_naphut@bkrt'}</p>
+      <p className="text-xs text-gray-500 mt-2 mb-1">Phone:</p>
+      <p className="text-sm font-bold text-black">{qrData.phone_number || '+855 97 202 1149'}</p>
+      {qrData.is_mock && (
+        <p className="text-xs text-yellow-600 mt-2">⚠️ Test Mode</p>
+      )}
+    </div>
+    
+    <p className="text-sm text-gray-600 mb-4 flex items-center justify-center">
+      <Smartphone className="w-4 h-4 mr-2" />
+      Open Bakong App and scan the QR code
+    </p>
+
+    {qrData.md5 && (
+      <div className="mb-4 p-3 bg-gray-50 rounded-xl flex items-center justify-between">
+        <code className="text-xs text-gray-600 truncate max-w-[200px]">
+          MD5: {qrData.md5.substring(0, 20)}...
+        </code>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(qrData.md5!);
+            toast.success('MD5 copied to clipboard!');
+          }}
+          className="p-2 hover:bg-gray-200 rounded-lg transition"
+          title="Copy MD5"
+        >
+          <Copy className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
+    )}
+    
+    {paymentStatus === 'PAID' ? (
+      <div className="bg-green-50 text-green-600 py-3 px-4 rounded-xl font-bold">
+        Payment Successful!
+      </div>
+    ) : (
+      <div className="bg-blue-50 text-blue-600 py-3 px-4 rounded-xl font-bold flex items-center justify-center">
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        Waiting for payment...
+      </div>
+    )}
+  </div>
+)}
 
               {/* Submit Button */}
               <button

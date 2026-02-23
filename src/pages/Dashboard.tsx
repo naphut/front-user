@@ -14,18 +14,36 @@ import {
   XCircle,
   MapPin,
   Phone,
-  Mail
+  Mail,
+  Settings,
+  ChevronRight,
+  CreditCard,
+  Truck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { orderApi, Order } from '../services/orderApi';
 import { userApi, UserProfile } from '../services/userApi';
 import toast from 'react-hot-toast';
 
+type TabType = 'dashboard' | 'profile' | 'orders' | 'wishlist' | 'settings';
+
 const UserDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  
+  // Determine active tab from URL
+  const getTabFromPath = (): TabType => {
+    const path = location.pathname;
+    if (path.includes('/profile')) return 'profile';
+    if (path.includes('/orders')) return 'orders';
+    if (path.includes('/wishlist')) return 'wishlist';
+    if (path.includes('/settings')) return 'settings';
+    return 'dashboard';
+  };
+
+  const [activeTab, setActiveTab] = useState<TabType>(getTabFromPath());
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
@@ -33,9 +51,9 @@ const UserDashboard = () => {
     full_name: user?.full_name || '',
     email: user?.email || '',
     username: user?.username || '',
-    phone: '',
-    address: '',
-    city: '',
+    phone: user?.phone || '',
+    address: user?.address || '',
+    city: user?.city || '',
     profile_image: user?.profile_image || null,
   });
 
@@ -52,6 +70,11 @@ const UserDashboard = () => {
     }
   }, [user]);
 
+  // Update active tab when URL changes
+  useEffect(() => {
+    setActiveTab(getTabFromPath());
+  }, [location]);
+
   const fetchUserProfile = async () => {
     try {
       const currentUser = await userApi.getCurrentUser();
@@ -65,7 +88,6 @@ const UserDashboard = () => {
       }));
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
-      // Fallback to localStorage if backend fails
       const savedProfile = localStorage.getItem('userProfile');
       if (savedProfile) {
         const parsedProfile = JSON.parse(savedProfile);
@@ -94,7 +116,6 @@ const UserDashboard = () => {
     try {
       toast.loading('Updating profile...', { id: 'update' });
       
-      // Prepare profile data for backend
       const profileData: UserProfile = {
         full_name: profile.full_name || undefined,
         phone: profile.phone || undefined,
@@ -103,28 +124,20 @@ const UserDashboard = () => {
         profile_image: profile.profile_image || undefined,
       };
 
-      // Update profile on backend
       const updatedUser = await userApi.updateProfile(profileData);
       
-      // Update local state
       setProfile(prevProfile => ({
         ...prevProfile,
         ...profileData
       }));
       
-      // Save to localStorage as backup
       localStorage.setItem('userProfile', JSON.stringify(profileData));
       
       toast.dismiss('update');
       toast.success('Profile updated successfully');
       
-      // Show success alert
       setShowSuccessAlert(true);
-      
-      // Hide alert after 3 seconds
-      setTimeout(() => {
-        setShowSuccessAlert(false);
-      }, 3000);
+      setTimeout(() => setShowSuccessAlert(false), 3000);
     } catch (error: any) {
       toast.dismiss('update');
       console.error('Failed to update profile:', error);
@@ -135,13 +148,11 @@ const UserDashboard = () => {
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Check file size (max 2MB for better performance)
       if (file.size > 2 * 1024 * 1024) {
         toast.error('Image size should be less than 2MB');
         return;
       }
       
-      // Check file type
       if (!file.type.startsWith('image/')) {
         toast.error('Please select a valid image file');
         return;
@@ -155,13 +166,11 @@ const UserDashboard = () => {
         toast.dismiss('upload');
         const result = reader.result as string;
         
-        // Compress the image if it's too large (simple resize)
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           
-          // Limit dimensions to reasonable size
           const maxWidth = 400;
           const maxHeight = 400;
           let width = img.width;
@@ -210,7 +219,7 @@ const UserDashboard = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'delivered': return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case 'shipped': return <Package className="w-4 h-4 text-blue-600" />;
+      case 'shipped': return <Truck className="w-4 h-4 text-blue-600" />;
       case 'processing': return <Clock className="w-4 h-4 text-yellow-600" />;
       case 'cancelled': return <XCircle className="w-4 h-4 text-red-600" />;
       default: return <Clock className="w-4 h-4 text-gray-600" />;
@@ -228,13 +237,18 @@ const UserDashboard = () => {
   };
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: 'orders', label: 'My Orders', icon: <ShoppingBag className="w-5 h-5" /> },
-    { id: 'profile', label: 'My Profile', icon: <User className="w-5 h-5" /> },
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/dashboard' },
+    { id: 'profile', label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/profile' },
+    { id: 'orders', label: 'My Orders', icon: <ShoppingBag className="w-5 h-5" />, path: '/orders' },
     { id: 'wishlist', label: 'Wishlist', icon: <Heart className="w-5 h-5" />, path: '/wishlist' },
+    { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" />, path: '/settings' },
   ];
 
   const userName = user?.full_name || user?.username || user?.email?.split('@')[0] || 'Guest';
+
+  const navigateToTab = (path: string) => {
+    navigate(path);
+  };
 
   if (!user) return null;
 
@@ -284,30 +298,25 @@ const UserDashboard = () => {
               {/* Navigation */}
               <nav className="space-y-1">
                 {menuItems.map((item) => (
-                  item.path ? (
-                    <Link
-                      key={item.id}
-                      to={item.path}
-                      className="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-black hover:text-white transition-all"
-                    >
+                  <button
+                    key={item.id}
+                    onClick={() => navigateToTab(item.path)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all",
+                      activeTab === item.id 
+                        ? "bg-black text-white" 
+                        : "text-gray-700 hover:bg-gray-100"
+                    )}
+                  >
+                    <div className="flex items-center space-x-3">
                       {item.icon}
                       <span className="font-medium">{item.label}</span>
-                    </Link>
-                  ) : (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id)}
-                      className={cn(
-                        "w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all",
-                        activeTab === item.id 
-                          ? "bg-black text-white" 
-                          : "text-gray-700 hover:bg-gray-100"
-                      )}
-                    >
-                      {item.icon}
-                      <span className="font-medium">{item.label}</span>
-                    </button>
-                  )
+                    </div>
+                    <ChevronRight className={cn(
+                      "w-4 h-4",
+                      activeTab === item.id ? "text-white" : "text-gray-400"
+                    )} />
+                  </button>
                 ))}
                 
                 <button
@@ -393,63 +402,14 @@ const UserDashboard = () => {
                           </div>
                         </Link>
                       ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Orders Tab */}
-              {activeTab === 'orders' && (
-                <div>
-                  <h2 className="text-2xl font-bold mb-6">My Orders</h2>
-                  
-                  {loadingOrders ? (
-                    <div className="flex justify-center py-12">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
-                    </div>
-                  ) : orders.length === 0 ? (
-                    <div className="text-center py-16">
-                      <ShoppingBag className="w-20 h-20 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-xl font-bold mb-2">No orders yet</h3>
-                      <p className="text-gray-500 mb-6">Ready to start shopping?</p>
-                      <Link to="/products" className="bg-black text-white px-8 py-3 rounded-xl font-medium hover:bg-gray-800 transition">
-                        Browse Products
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {orders.map((order) => (
-                        <div key={order.id} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-                            <div>
-                              <Link to={`/orders/${order.id}`} className="text-lg font-bold hover:underline">
-                                Order #{order.order_number}
-                              </Link>
-                              <p className="text-sm text-gray-500">
-                                {new Date(order.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <div className="flex items-center space-x-4 mt-2 md:mt-0">
-                              <span className={`px-3 py-1 text-xs rounded-full ${getStatusColor(order.status)}`}>
-                                {order.status}
-                              </span>
-                              <span className="text-xl font-bold">${order.total_amount.toFixed(2)}</span>
-                            </div>
-                          </div>
-                          
-                          <div className="border-t border-gray-100 pt-4">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-gray-500">Items: {order.items.length}</span>
-                              <Link 
-                                to={`/orders/${order.id}`}
-                                className="text-black font-medium hover:underline flex items-center"
-                              >
-                                View Details →
-                              </Link>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                      {orders.length > 3 && (
+                        <button
+                          onClick={() => navigateToTab('/orders')}
+                          className="w-full py-3 text-center text-sm font-medium text-black hover:text-gray-600 transition"
+                        >
+                          View All Orders →
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -491,7 +451,7 @@ const UserDashboard = () => {
                       <div className="flex-1">
                         <h3 className="text-lg font-semibold mb-2">Profile Picture</h3>
                         <p className="text-sm text-gray-600 mb-4">
-                          Upload a profile picture. Recommended: Square image, at least 200x200px. Max size: 2MB. Images will be compressed for optimal performance.
+                          Upload a profile picture. Recommended: Square image, at least 200x200px. Max size: 2MB.
                         </p>
                         <div className="flex space-x-3">
                           <label className="px-4 py-2 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition cursor-pointer">
@@ -609,39 +569,163 @@ const UserDashboard = () => {
                       initial={{ opacity: 0, scale: 0.9, y: -20 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: -20 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
                       className="mt-4 p-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl shadow-lg"
                     >
                       <div className="flex items-center">
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          transition={{ delay: 0.1, duration: 0.2 }}
                           className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center mr-4 shadow-lg"
                         >
                           <CheckCircle className="w-6 h-6 text-white" />
                         </motion.div>
                         <div className="flex-1">
-                          <motion.h4 
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.1, duration: 0.2 }}
-                            className="font-bold text-green-800 text-lg"
-                          >
-                            Profile Updated Successfully!
-                          </motion.h4>
-                          <motion.p 
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.2, duration: 0.2 }}
-                            className="text-green-600"
-                          >
-                            Your changes have been saved to your account.
-                          </motion.p>
+                          <h4 className="font-bold text-green-800 text-lg">Profile Updated Successfully!</h4>
+                          <p className="text-green-600">Your changes have been saved to your account.</p>
                         </div>
                       </div>
                     </motion.div>
                   )}
+                </div>
+              )}
+
+              {/* Orders Tab */}
+              {activeTab === 'orders' && (
+                <div>
+                  <h2 className="text-2xl font-bold mb-6">My Orders</h2>
+                  
+                  {loadingOrders ? (
+                    <div className="flex justify-center py-12">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+                    </div>
+                  ) : orders.length === 0 ? (
+                    <div className="text-center py-16">
+                      <ShoppingBag className="w-20 h-20 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-xl font-bold mb-2">No orders yet</h3>
+                      <p className="text-gray-500 mb-6">Ready to start shopping?</p>
+                      <Link to="/products" className="bg-black text-white px-8 py-3 rounded-xl font-medium hover:bg-gray-800 transition">
+                        Browse Products
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {orders.map((order) => (
+                        <div key={order.id} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                            <div>
+                              <Link to={`/orders/${order.id}`} className="text-lg font-bold hover:underline">
+                                Order #{order.order_number}
+                              </Link>
+                              <p className="text-sm text-gray-500">
+                                {new Date(order.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center space-x-4 mt-2 md:mt-0">
+                              <span className={`px-3 py-1 text-xs rounded-full ${getStatusColor(order.status)}`}>
+                                {order.status}
+                              </span>
+                              <span className="text-xl font-bold">${order.total_amount.toFixed(2)}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="border-t border-gray-100 pt-4">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-500">Items: {order.items?.length || 0}</span>
+                              <Link 
+                                to={`/orders/${order.id}`}
+                                className="text-black font-medium hover:underline flex items-center"
+                              >
+                                View Details →
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Wishlist Tab - Redirect to wishlist page */}
+              {activeTab === 'wishlist' && (
+                <div className="text-center py-12">
+                  <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Go to Wishlist</h3>
+                  <p className="text-gray-500 mb-6">View and manage your favorite items</p>
+                  <Link 
+                    to="/wishlist" 
+                    className="bg-black text-white px-8 py-3 rounded-xl font-medium hover:bg-gray-800 transition inline-block"
+                  >
+                    Open Wishlist
+                  </Link>
+                </div>
+              )}
+
+              {/* Settings Tab */}
+              {activeTab === 'settings' && (
+                <div>
+                  <h2 className="text-2xl font-bold mb-6">Account Settings</h2>
+                  
+                  <div className="space-y-6">
+                    <div className="border border-gray-200 rounded-xl p-6">
+                      <h3 className="text-lg font-semibold mb-4">Preferences</h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">Email Notifications</p>
+                            <p className="text-sm text-gray-500">Receive updates about your orders</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" defaultChecked />
+                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-black transition"></div>
+                            <div className="absolute w-4 h-4 bg-white rounded-full left-1 top-1 peer-checked:translate-x-5 transition"></div>
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">SMS Notifications</p>
+                            <p className="text-sm text-gray-500">Get text alerts for order updates</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-black transition"></div>
+                            <div className="absolute w-4 h-4 bg-white rounded-full left-1 top-1 peer-checked:translate-x-5 transition"></div>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl p-6">
+                      <h3 className="text-lg font-semibold mb-4">Payment Methods</h3>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <CreditCard className="w-6 h-6 text-gray-400" />
+                          <div>
+                            <p className="font-medium">No payment methods saved</p>
+                            <p className="text-sm text-gray-500">Add a card for faster checkout</p>
+                          </div>
+                        </div>
+                        <button className="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
+                          Add Card
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl p-6">
+                      <h3 className="text-lg font-semibold mb-4">Security</h3>
+                      <div className="space-y-3">
+                        <button className="w-full px-4 py-3 bg-gray-100 text-left rounded-lg hover:bg-gray-200 transition">
+                          <span className="font-medium">Change Password</span>
+                          <p className="text-sm text-gray-500 mt-1">Update your password regularly</p>
+                        </button>
+                        <button className="w-full px-4 py-3 bg-gray-100 text-left rounded-lg hover:bg-gray-200 transition">
+                          <span className="font-medium">Two-Factor Authentication</span>
+                          <p className="text-sm text-gray-500 mt-1">Add extra security to your account</p>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </motion.div>
